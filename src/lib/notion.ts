@@ -48,6 +48,13 @@ export async function saveToNotion(data: ClipData): Promise<string> {
         start: new Date().toISOString().split("T")[0],
       },
     },
+    ...(data.thumbnail
+      ? {
+          サムネイル: {
+            url: data.thumbnail,
+          },
+        }
+      : {}),
   };
 
   if (data.notes) {
