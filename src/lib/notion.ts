@@ -51,7 +51,13 @@ export async function saveToNotion(data: ClipData): Promise<string> {
     ...(data.thumbnail
       ? {
           サムネイル: {
-            url: data.thumbnail,
+            files: [
+              {
+                type: "external",
+                name: "thumbnail",
+                external: { url: data.thumbnail },
+              },
+            ],
           },
         }
       : {}),
