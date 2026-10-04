@@ -2,8 +2,6 @@ import { Suspense } from "react";
 import { ClipForm } from "./ClipForm";
 
 export default function ClipPage() {
-  const token = process.env.CLIP_TOKEN ?? "";
-
   return (
     <Suspense
       fallback={
@@ -12,7 +10,7 @@ export default function ClipPage() {
         </div>
       }
     >
-      <ClipForm token={token} />
+      <ClipForm />
     </Suspense>
   );
 }

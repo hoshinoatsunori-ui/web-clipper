@@ -52,7 +52,8 @@ src/
 │   ├── globals.css           # Tailwind CSSのベーススタイル
 │   ├── page.tsx              # トップページ（使い方・ブックマークレット登録UI）
 │   ├── clip/
-│   │   └── page.tsx          # クリップ保存フォーム画面
+│   │   ├── page.tsx          # クリップ保存フォーム画面（Suspenseラッパー）
+│   │   └── ClipForm.tsx      # 保存フォーム本体（クライアントコンポーネント）
 │   ├── bookmarklet/
 │   │   └── page.tsx          # ブックマークレット設定ガイド画面
 │   └── api/
@@ -78,20 +79,25 @@ javascript:(function(){
   var i = encodeURIComponent(
     (document.querySelector('meta[property="og:image"]') || {}).content || ''
   );                                                 // OGP画像URL
-  window.open('{APP_URL}/clip?url='+u+'&title='+t+'&thumb='+i, '_blank');
+  window.open('{APP_URL}/clip?url='+u+'&title='+t+'&thumb='+i+'#t={TOKEN}', '_blank');
 })();
 ```
+
+`#t={TOKEN}` は `CLIP_TOKEN` を設定した場合のみ付く。`/bookmarklet` 画面でユーザーが入力したトークンを、ブラウザ内でコードに埋め込む（サーバーには送信しない）。
 
 **収集する情報:**
 - `url`: `location.href` — 現在のページのURL
 - `title`: `document.title` — ページタイトル
 - `thumb`: `og:image` メタタグ — OGP画像URL（なければ空）
+- `#t`: アクセストークン（URLフラグメント。HTTPリクエストに含まれないためサーバーログに残らない）
 
 ---
 
-### `/clip` — 保存フォーム画面 (`src/app/clip/page.tsx`)
+### `/clip` — 保存フォーム画面 (`src/app/clip/page.tsx`, `src/app/clip/ClipForm.tsx`)
 
-クライアントコンポーネント (`"use client"`)。ブックマークレットから渡されたクエリパラメータを `useSearchParams()` で受け取り、保存フォームを表示する。
+`page.tsx` は `<Suspense>` で `ClipForm` を包むだけ。`ClipForm` はクライアントコンポーネント (`"use client"`) で、ブックマークレットから渡されたクエリパラメータを `useSearchParams()` で受け取り、保存フォームを表示する。
+
+トークンはサーバーから渡さない。マウント時に `window.location.hash` から `t` を読み取り、`history.replaceState` でフラグメントをURLから消す。
 
 **状態管理:**
 
@@ -105,10 +111,10 @@ type SaveState =
 
 **処理フロー:**
 
-1. URLパラメータからページ情報を取得
+1. URLパラメータからページ情報、フラグメントからトークンを取得
 2. サムネイル・タイトル・URLをプレビュー表示
 3. ユーザーが任意でメモを入力
-4. 「保存する」タップ → `/api/save` にPOSTリクエスト
+4. 「保存する」タップ → `/api/save` にPOSTリクエスト（`Authorization: Bearer <token>`、閲覧日として端末ローカルの日付 `toLocaleDateString("sv")` = `YYYY-MM-DD` を付与）
 5. 成功時: AI生成の要約・カテゴリを表示
 6. 失敗時: エラーメッセージを表示
 
@@ -131,7 +137,12 @@ Claude APIとページフェッチの合計時間を考慮して60秒に設定�
 
 ```
 POST /api/save
-  Body: { url, title?, thumbnail?, notes? }
+  Header: Authorization: Bearer <token>（CLIP_TOKEN設定時は必須）
+  Body: { url, title?, thumbnail?, notes?, date? }
+
+0. 認証
+   └── CLIP_TOKEN が設定されていて、ヘッダーが一致しない → 401エラー
+       （比較は crypto.timingSafeEqual で定数時間）
 
 1. バリデーション
    └── urlが存在しない → 400エラー
@@ -143,8 +154,9 @@ POST /api/save
    ├── og:image / twitter:image からサムネイル補完
    └── script・style・nav・footer・header・aside を除去して本文抽出
 
-3. Claude API で分析
-   └── analyzeContent(title, url, bodyText)
+3. Claude API で分析（失敗してもスキップ）
+   ├── analyzeContent(title, url, bodyText)
+   └── 失敗時は summary: ""、category: "その他" で続行
 
 4. Notion API で保存
    └── saveToNotion(data)
@@ -156,14 +168,14 @@ POST /api/save
 **フォールバック設計:**
 ページのフェッチが失敗（タイムアウト・CORS・認証等）しても処理を続行する。その場合、ブックマークレットから受け取ったタイトルとURLのみで Claude に要約を依頼する。
 
+Claude API の呼び出しやJSONの解析に失敗した場合も、要約は空・分類は「その他」としてNotionへの保存を続行する。
+
 ---
 
 ### `lib/claude.ts` — Claude API クライアント
 
 **使用モデル:** `claude-haiku-4-5`
 高速・低コストのモデルを選択。要約・分類タスクに十分な性能を持つ。
-
-**コスト:** 約 $0.0002 / 1回の保存（入力8,000文字の場合）
 
 **プロンプト設計:**
 
@@ -200,7 +212,7 @@ Claude が上記以外のカテゴリを返した場合は「その他」にフ�
 | URL | url | 元ページのURL |
 | 要約 | rich_text | AI生成の要約文 |
 | 分類 | select | AI生成のカテゴリ |
-| 閲覧日 | date | 保存時の日付（ISO形式） |
+| 閲覧日 | date | 保存時の日付（クライアントから受け取った端末ローカルの日付。無ければサーバーのUTC日付） |
 | メモ | rich_text | ユーザー入力のメモ（任意） |
 | サムネイル | files | OGP画像（ファイルとメディアタイプ） |
 
@@ -233,7 +245,8 @@ Notion API の `rich_text` は1ブロックあたり2,000文字が上限のた�
     ▼
 ユーザーが「保存する」をタップ
     │
-    │ fetch("POST /api/save", { url, title, thumbnail, notes })
+    │ fetch("POST /api/save", { url, title, thumbnail, notes, date })
+    │   Header: Authorization: Bearer <token>
     ▼
 /api/save 処理開始
     │
@@ -266,16 +279,17 @@ Notion API の `rich_text` は1ブロックあたり2,000文字が上限のた�
 | `NOTION_API_KEY` | Notionインテグレーションのシークレット | `secret_xxx...` |
 | `NOTION_DATABASE_ID` | 保存先データベースのID（32文字） | `abc123...` |
 | `ANTHROPIC_API_KEY` | Anthropic APIキー | `sk-ant-api03-xxx...` |
-| `NEXT_PUBLIC_APP_URL` | デプロイ先のURL（ブックマークレット生成に使用） | `https://web-clipper-amber.vercel.app` |
+| `CLIP_TOKEN` | 保存APIのアクセストークン（任意・推奨） | `openssl rand -hex 32` で生成した値 |
 
-`NEXT_PUBLIC_` プレフィックスのある変数はクライアントサイドのバンドルに含まれる。それ以外はサーバーサイドのみで参照される。
+いずれもサーバーサイドのみで参照し、クライアントのバンドルには含めない（`NEXT_PUBLIC_` プレフィックスの変数は使っていない）。
 
 ---
 
 ## セキュリティ考慮事項
 
 - **APIキーはサーバーサイドのみ**: `NOTION_API_KEY` と `ANTHROPIC_API_KEY` は `NEXT_PUBLIC_` プレフィックスがないためブラウザに露出しない
-- **User-Agent偽装**: ページフェッチ時にブラウザに近いUAを設定してブロックを回避
+- **トークン認証**: `CLIP_TOKEN` 設定時、`/api/save` は Bearer トークンが一致しないリクエストを401で拒否する。トークンはHTMLやバンドルで配信せず、ユーザーのブックマークレットにのみ保持する
+- **User-Agent**: ページフェッチ時は `Mozilla/5.0 (compatible; WebClipper/1.0; +https://github.com)` を名乗る（ブラウザの偽装はしていない）
 - **タイムアウト設定**: 外部フェッチに10秒、Serverless Function全体に60秒のタイムアウトを設定
 - **入力トリミング**: Notion APIの文字数制限（2,000文字）に合わせてデータをトリミング
 
@@ -289,4 +303,4 @@ Notion API の `rich_text` は1ブロックあたり2,000文字が上限のた�
 | 認証が必要なページ | ログインが必要なページは本文を取得できない（URLとタイトルのみで要約） |
 | Notion rich_text上限 | 要約・メモは2,000文字まで |
 | Claude入力上限 | 本文は8,000文字でトリミング |
-| Vercel無料枠 | Serverless Functionは月100GB・実行時間制限あり |
+| Vercelのプラン制限 | Functionの実行時間・帯域などはVercelのプランに依存する（最新の値はVercelの料金ページを参照） |

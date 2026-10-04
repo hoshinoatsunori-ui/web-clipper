@@ -10,14 +10,31 @@ type SaveState =
   | { status: "success"; title: string; summary: string; category: string }
   | { status: "error"; message: string };
 
-export function ClipForm({ token }: { token: string }) {
+// トークンはブックマークレットがURLフラグメント（#t=...）で渡す。
+// フラグメントはサーバーに送信されないため、サーバーログやHTMLに残らない。
+function readTokenFromHash(): string {
+  if (typeof window === "undefined") return "";
+  const params = new URLSearchParams(window.location.hash.slice(1));
+  return params.get("t") ?? "";
+}
+
+export function ClipForm() {
   const searchParams = useSearchParams();
+  const [token, setToken] = useState("");
   const [notes, setNotes] = useState("");
   const [saveState, setSaveState] = useState<SaveState>({ status: "idle" });
 
   const url = searchParams.get("url") || "";
   const title = searchParams.get("title") || "";
   const thumbnail = searchParams.get("thumb") || "";
+
+  useEffect(() => {
+    setToken(readTokenFromHash());
+    // 履歴にトークンを残さないよう、フラグメントを消しておく
+    if (window.location.hash) {
+      history.replaceState(null, "", window.location.pathname + window.location.search);
+    }
+  }, []);
 
   useEffect(() => {
     if (title) {

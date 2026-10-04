@@ -4,12 +4,15 @@ import { useState } from "react";
 
 export default function BookmarkletPage() {
   const [copied, setCopied] = useState(false);
+  const [token, setToken] = useState("");
 
   // 本番URLはVercelデプロイ後に確定するので、相対パスとして動的に生成
   const getBookmarkletCode = () => {
     const origin =
       typeof window !== "undefined" ? window.location.origin : "";
-    return `javascript:(function(){var u=encodeURIComponent(location.href);var t=encodeURIComponent(document.title);var i=encodeURIComponent((document.querySelector('meta[property="og:image"]')||{content:''}).content);window.open('${origin}/clip?url='+u+'&title='+t+'&thumb='+i,'_blank')})();`;
+    // トークンはこの画面の中だけで組み立てる（サーバーには送らない）
+    const hash = token ? `#t=${encodeURIComponent(token)}` : "";
+    return `javascript:(function(){var u=encodeURIComponent(location.href);var t=encodeURIComponent(document.title);var i=encodeURIComponent((document.querySelector('meta[property="og:image"]')||{content:''}).content);window.open('${origin}/clip?url='+u+'&title='+t+'&thumb='+i+'${hash}','_blank')})();`;
   };
 
   const handleCopy = async () => {
@@ -45,6 +48,25 @@ export default function BookmarkletPage() {
           Safariの共有ボタン（□↑）→「ブックマークを追加」→
           名前は何でもOK（後で変更します）
         </p>
+      </div>
+
+      {/* トークン入力 */}
+      <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
+        <h2 className="font-semibold text-gray-800 mb-2">
+          アクセストークン（CLIP_TOKEN を設定した場合）
+        </h2>
+        <p className="text-sm text-gray-600 leading-relaxed mb-3">
+          Vercelの環境変数 CLIP_TOKEN に設定した値を入力すると、
+          ブックマークレットに埋め込まれます。入力値はこの端末の中だけで使われ、サーバーには送信されません。
+        </p>
+        <input
+          type="password"
+          value={token}
+          onChange={(e) => setToken(e.target.value)}
+          placeholder="CLIP_TOKEN の値"
+          autoComplete="off"
+          className="w-full text-sm border border-gray-200 rounded-xl p-3 outline-none"
+        />
       </div>
 
       {/* ステップ2 */}

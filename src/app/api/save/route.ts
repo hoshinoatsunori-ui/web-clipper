@@ -1,15 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as cheerio from "cheerio";
+import { timingSafeEqual } from "crypto";
 import { analyzeContent } from "@/lib/claude";
 import { saveToNotion } from "@/lib/notion";
 
 export const maxDuration = 60; // Vercel serverless function timeout
 
+function safeEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
+}
+
 export async function POST(request: NextRequest) {
+  // CLIP_TOKEN が設定されていれば Authorization: Bearer <token> を必須にする
   const token = process.env.CLIP_TOKEN;
   if (token) {
-    const authHeader = request.headers.get("Authorization");
-    if (authHeader !== `Bearer ${token}`) {
+    const authHeader = request.headers.get("Authorization") ?? "";
+    if (!safeEqual(authHeader, `Bearer ${token}`)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
   }

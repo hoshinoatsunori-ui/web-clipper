@@ -1,11 +1,6 @@
 import Link from "next/link";
 
 export default function Home() {
-  const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL || "https://your-app.vercel.app";
-
-  const bookmarkletCode = `javascript:(function(){var u=encodeURIComponent(location.href);var t=encodeURIComponent(document.title);var i=encodeURIComponent((document.querySelector('meta[property="og:image"]')||{}).content||'');window.open('${appUrl}/clip?url='+u+'&title='+t+'&thumb='+i,'_blank')})();`;
-
   return (
     <main className="max-w-lg mx-auto p-4 pt-8">
       <div className="mb-8">
@@ -41,18 +36,14 @@ export default function Home() {
           📌 ブックマークレットを設定
         </h2>
         <p className="text-xs text-gray-500 mb-4">
-          以下のリンクをSafariのブックマークとして保存してください
+          設定画面でブックマークレットのコードを作成し、Safariに登録します
         </p>
         <Link
-          href={bookmarkletCode}
+          href="/bookmarklet"
           className="block w-full py-3 px-4 bg-indigo-500 text-white text-center rounded-xl font-semibold text-sm"
         >
-          📎 このリンクをブックマーク登録
+          📎 ブックマークレット設定へ
         </Link>
-        <p className="text-xs text-gray-400 mt-3 leading-relaxed">
-          ヒント: このリンクを長押し → 「ブックマークを追加」→
-          名前を「Notionに保存」などに変更
-        </p>
       </div>
 
       {/* 使い方 */}
