@@ -13,6 +13,7 @@ export interface ClipData {
   category: string;
   thumbnail: string;
   notes?: string;
+  date?: string;
 }
 
 export async function saveToNotion(data: ClipData): Promise<string> {
@@ -45,7 +46,7 @@ export async function saveToNotion(data: ClipData): Promise<string> {
     },
     閲覧日: {
       date: {
-        start: new Date().toISOString().split("T")[0],
+        start: data.date ?? new Date().toISOString().split("T")[0],
       },
     },
     ...(data.thumbnail

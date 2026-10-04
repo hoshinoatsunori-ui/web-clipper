@@ -6,14 +6,23 @@ import { saveToNotion } from "@/lib/notion";
 export const maxDuration = 60; // Vercel serverless function timeout
 
 export async function POST(request: NextRequest) {
+  const token = process.env.CLIP_TOKEN;
+  if (token) {
+    const authHeader = request.headers.get("Authorization");
+    if (authHeader !== `Bearer ${token}`) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+  }
+
   try {
     const body = await request.json() as {
       url: string;
       title?: string;
       thumbnail?: string;
       notes?: string;
+      date?: string;
     };
-    const { url, title: initialTitle, thumbnail: initialThumbnail, notes } = body;
+    const { url, title: initialTitle, thumbnail: initialThumbnail, notes, date } = body;
 
     if (!url) {
       return NextResponse.json({ error: "URL is required" }, { status: 400 });
@@ -66,8 +75,14 @@ export async function POST(request: NextRequest) {
       pageTitle = url;
     }
 
-    // Claude でコンテンツを分析
-    const analysis = await analyzeContent(pageTitle, url, bodyText);
+    // Claude でコンテンツを分析（失敗してもフォールバックして保存を続行）
+    let analysis: { summary: string; category: string };
+    try {
+      analysis = await analyzeContent(pageTitle, url, bodyText);
+    } catch (analyzeError) {
+      console.warn("Analysis failed, saving with fallback:", analyzeError);
+      analysis = { summary: "", category: "その他" };
+    }
 
     // Notion に保存
     const pageId = await saveToNotion({
@@ -77,6 +92,7 @@ export async function POST(request: NextRequest) {
       category: analysis.category,
       thumbnail,
       notes,
+      date,
     });
 
     return NextResponse.json({
